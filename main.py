@@ -35,7 +35,7 @@ def load_data(uploaded_file):
     return pd.read_csv(uploaded_file)
 
 @st.cache_data
-def preprocess_data(df, fill_missing):
+def preprocess_data(df, fill_missing, encode_categorical="None", scale_numerical="None"):
     df = df.copy()
     if fill_missing == "Drop rows":
         df = df.dropna()
@@ -48,6 +48,28 @@ def preprocess_data(df, fill_missing):
     elif fill_missing == "Fill with mode":
         for col in df.select_dtypes(include=['object']).columns:
             df[col].fillna(df[col].mode()[0] if not df[col].mode().empty else '', inplace=True)
+    
+    # Encode categorical
+    if encode_categorical == "Label Encoding":
+        from sklearn.preprocessing import LabelEncoder
+        le = LabelEncoder()
+        for col in df.select_dtypes(include=['object']).columns:
+            df[col] = le.fit_transform(df[col])
+    elif encode_categorical == "One-Hot Encoding":
+        df = pd.get_dummies(df, columns=df.select_dtypes(include=['object']).columns)
+    
+    # Scale numerical
+    if scale_numerical == "Standard Scaler":
+        from sklearn.preprocessing import StandardScaler
+        scaler = StandardScaler()
+        num_cols = df.select_dtypes(include=[np.number]).columns
+        df[num_cols] = scaler.fit_transform(df[num_cols])
+    elif scale_numerical == "Min-Max Scaler":
+        from sklearn.preprocessing import MinMaxScaler
+        scaler = MinMaxScaler()
+        num_cols = df.select_dtypes(include=[np.number]).columns
+        df[num_cols] = scaler.fit_transform(df[num_cols])
+    
     return df
 
 st.set_page_config(page_title="No Code ML Platform", page_icon="🤖", layout="wide")
@@ -90,8 +112,10 @@ with tab1:
         # Data Preprocessing
         with st.expander("Data Preprocessing"):
             fill_missing = st.selectbox("Handle Missing Values", ["None", "Drop rows", "Fill with mean", "Fill with median", "Fill with mode"], key="tabular_preprocess")
-            if fill_missing != "None":
-                df = preprocess_data(df, fill_missing)
+            encode_categorical = st.selectbox("Encode Categorical Variables", ["None", "Label Encoding", "One-Hot Encoding"], key="tabular_encode")
+            scale_numerical = st.selectbox("Scale Numerical Variables", ["None", "Standard Scaler", "Min-Max Scaler"], key="tabular_scale")
+            if fill_missing != "None" or encode_categorical != "None" or scale_numerical != "None":
+                df = preprocess_data(df, fill_missing, encode_categorical, scale_numerical)
                 st.session_state.tabular_df = df
                 st.write("Data after preprocessing:")
                 st.dataframe(df.head(), use_container_width=True)

@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "streamlit",
-    "autogluon",
-    "pandas"
+    "autogluon==1.4.0",
+    "pandas",
+    "scikit-learn"
 ]
