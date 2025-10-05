@@ -13,7 +13,13 @@ st.set_page_config(
     page_title="No Code ML Platform",
     page_icon="🤖",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_s            # Make predictions
+            st.write(f"Forecasting next {prediction_length} periods:")
+            predict_kwargs = {}
+            if prediction_intervals:
+                predict_kwargs['quantile_levels'] = [0.1, 0.5, 0.9]
+            predictions = predictor.predict(train_data, **predict_kwargs)
+            st.dataframe(predictions.head())="expanded"
 )
 
 # Initialize session state
@@ -84,7 +90,7 @@ Choose your task type and let AutoGluon handle the rest with **lightning-fast** 
 # Sidebar for global settings
 st.sidebar.header("⚙️ Global Settings")
 time_limit = st.sidebar.slider("⏱️ Training Time Limit (seconds)", min_value=60, max_value=3600, value=300, step=60)
-presets = st.sidebar.selectbox("🎯 Presets", ["best_quality", "high_quality", "good_quality", "medium_quality", "auto"])
+presets = st.sidebar.selectbox("🎯 Presets", ["extreme", "best", "high", "good", "medium", "auto"])
 
 # Main tabs
 tab1, tab2, tab3 = st.tabs(["📊 Tabular Data", "🖼️ Multimodal", "📈 Time Series"])
@@ -242,7 +248,7 @@ with tab2:
         # Advanced options
         with st.expander("Advanced Options"):
             time_limit = st.slider("Time Limit (seconds)", min_value=10, max_value=3600, value=600, key="multimodal_time")
-            presets = st.selectbox("Presets", ["medium_quality", "high_quality", "best_quality"], key="multimodal_presets")
+            presets = st.selectbox("Presets", ["medium", "high", "best"], key="multimodal_presets")
 
         if st.button("Train Model", key="multimodal_train"):
             with st.spinner("Training multimodal model... This may take a while."):
@@ -334,6 +340,8 @@ with tab3:
         with st.expander("Advanced Options"):
             time_limit = st.slider("Time Limit (seconds)", min_value=10, max_value=3600, value=600, key="timeseries_time")
             presets = st.selectbox("Presets", ["fast_training", "medium_quality", "high_quality", "best_quality"], key="timeseries_presets")
+            use_chronos = st.checkbox("Use Chronos (Zero-shot)", key="timeseries_chronos")
+            prediction_intervals = st.checkbox("Generate Prediction Intervals", key="timeseries_intervals")
 
         if st.button("Train and Forecast", key="timeseries_train"):
             with st.spinner("Training time series model... This may take a while."):
@@ -365,10 +373,16 @@ with tab3:
                     path=tempfile.mkdtemp()
                 )
 
+                fit_kwargs = {
+                    'time_limit': time_limit,
+                    'presets': presets
+                }
+                if use_chronos:
+                    fit_kwargs['hyperparameters'] = {'Chronos': {'model_path': 'amazon/chronos-t5-small'}}
+
                 predictor.fit(
                     train_data,
-                    time_limit=time_limit,
-                    presets=presets
+                    **fit_kwargs
                 )
 
             st.success("Time series model trained successfully!")
