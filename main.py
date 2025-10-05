@@ -239,6 +239,11 @@ with tab2:
         eval_metric_options = ["auto", "accuracy", "f1", "precision", "recall", "roc_auc", "log_loss", "mae", "mse", "r2"]
         eval_metric = st.selectbox("Evaluation Metric", eval_metric_options, key="multimodal_metric")
 
+        # Advanced options
+        with st.expander("Advanced Options"):
+            time_limit = st.slider("Time Limit (seconds)", min_value=10, max_value=3600, value=600, key="multimodal_time")
+            presets = st.selectbox("Presets", ["medium_quality", "high_quality", "best_quality"], key="multimodal_presets")
+
         if st.button("Train Model", key="multimodal_train"):
             with st.spinner("Training multimodal model... This may take a while."):
                 # Extract images if uploaded
@@ -324,6 +329,11 @@ with tab3:
 
         eval_metric_options = ["auto", "MAE", "MSE", "RMSE", "MAPE", "SMAPE", "MASE"]
         eval_metric = st.selectbox("Evaluation Metric", eval_metric_options, key="timeseries_metric")
+
+        # Advanced options
+        with st.expander("Advanced Options"):
+            time_limit = st.slider("Time Limit (seconds)", min_value=10, max_value=3600, value=600, key="timeseries_time")
+            presets = st.selectbox("Presets", ["fast_training", "medium_quality", "high_quality", "best_quality"], key="timeseries_presets")
 
         if st.button("Train and Forecast", key="timeseries_train"):
             with st.spinner("Training time series model... This may take a while."):
