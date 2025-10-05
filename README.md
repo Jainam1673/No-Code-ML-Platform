@@ -21,7 +21,7 @@ A user-friendly, no-code machine learning platform built with Streamlit and Auto
 
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/Jainam1673/No-Code-ML-Platform.git
    cd No-Code-ML-Platform
    ```
 
@@ -63,4 +63,4 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 
 ## License
 
-[Add your license here]
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
