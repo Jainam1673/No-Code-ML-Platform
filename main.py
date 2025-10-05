@@ -212,6 +212,9 @@ with tab2:
         problem_type_options = ["auto", "binary", "multiclass", "regression"]
         problem_type = st.selectbox("Select the problem type", problem_type_options, key="multimodal_problem")
 
+        eval_metric_options = ["auto", "accuracy", "f1", "precision", "recall", "roc_auc", "log_loss", "mae", "mse", "r2"]
+        eval_metric = st.selectbox("Evaluation Metric", eval_metric_options, key="multimodal_metric")
+
         if st.button("Train Model", key="multimodal_train"):
             with st.spinner("Training multimodal model... This may take a while."):
                 # Extract images if uploaded
@@ -228,6 +231,7 @@ with tab2:
                 predictor = MultiModalPredictor(
                     label=target_column,
                     problem_type=problem_type if problem_type != "auto" else None,
+                    eval_metric=eval_metric if eval_metric != "auto" else None,
                     path=tempfile.mkdtemp()
                 )
 
@@ -294,25 +298,43 @@ with tab3:
 
         prediction_length = st.slider("Prediction Length", min_value=1, max_value=100, value=10, key="timeseries_length")
 
+        eval_metric_options = ["auto", "MAE", "MSE", "RMSE", "MAPE", "SMAPE", "MASE"]
+        eval_metric = st.selectbox("Evaluation Metric", eval_metric_options, key="timeseries_metric")
+
         if st.button("Train and Forecast", key="timeseries_train"):
             with st.spinner("Training time series model... This may take a while."):
                 # Prepare data
                 df[timestamp_column] = pd.to_datetime(df[timestamp_column])
                 df = df.sort_values([item_id_column if item_id_column != "None" else timestamp_column, timestamp_column])
 
+                from autogluon.timeseries import TimeSeriesDataFrame
+                if item_id_column != "None":
+                    train_data = TimeSeriesDataFrame.from_data_frame(
+                        df,
+                        id_column=item_id_column,
+                        timestamp_column=timestamp_column
+                    )
+                else:
+                    # Single series, add dummy id
+                    df = df.copy()
+                    df['item_id'] = 'series_1'
+                    train_data = TimeSeriesDataFrame.from_data_frame(
+                        df,
+                        id_column='item_id',
+                        timestamp_column=timestamp_column
+                    )
+
                 predictor = TimeSeriesPredictor(
                     prediction_length=prediction_length,
                     target=target_column,
-                    freq="auto",  # Auto-detect frequency
+                    eval_metric=eval_metric if eval_metric != "auto" else None,
                     path=tempfile.mkdtemp()
                 )
 
                 predictor.fit(
-                    df,
+                    train_data,
                     time_limit=time_limit,
-                    presets=presets,
-                    id_column=item_id_column if item_id_column != "None" else None,
-                    timestamp_column=timestamp_column
+                    presets=presets
                 )
 
             st.success("Time series model trained successfully!")
