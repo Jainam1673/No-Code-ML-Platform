@@ -1,0 +1,59 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+venv/
+env/
+
+# ML Models and Data
+trained_*_model/
+AutogluonModels/
+ag_models/
+*.zip
+*.pkl
+*.joblib
+*.h5
+*.pb
+*.onnx
+model_*/
+models/
+
+# Streamlit
+.streamlit/
+
+# Temporary files
+temp*/
+*.tmp
+*.temp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Data (uncomment if you want to ignore uploaded data)
+# data/
+# *.csv
+# *.json
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment
+.env
+.env.local
