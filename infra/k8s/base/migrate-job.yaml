@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backend-migrate
+  namespace: nocodeml
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 1200
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+      terminationGracePeriodSeconds: 30
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: ghcr.io/your-org/nocodeml-backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "main.py", "db-upgrade"]
+          envFrom:
+            - configMapRef:
+                name: nocodeml-config
+          env:
+            - name: NOCODEML_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nocodeml-secrets
+                  key: NOCODEML_DATABASE_URL
+            - name: NOCODEML_REDIS_URL
+              value: redis://redis:6379/0
+            - name: NOCODEML_CELERY_BROKER_URL
+              value: redis://redis:6379/0
+            - name: NOCODEML_CELERY_RESULT_BACKEND
+              value: redis://redis:6379/1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]

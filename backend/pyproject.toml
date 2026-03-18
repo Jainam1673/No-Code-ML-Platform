@@ -1,0 +1,44 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Backend engine for No-Code ML Platform powered by AutoGluon Tabular"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.16.0",
+    "autogluon-tabular>=1.5.0",
+    "celery>=5.5.3",
+    "fastapi>=0.135.1",
+    "psycopg[binary]>=3.2.13",
+    "prometheus-fastapi-instrumentator>=7.1.0",
+    "pydantic-settings>=2.13.1",
+    "redis>=6.4.0",
+    "sqlalchemy>=2.0.44",
+    "typing-extensions>=4.15.0",
+    "uvicorn>=0.42.0",
+]
+
+[project.scripts]
+backend = "main:main"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=1.18.0",
+    "pytest>=8.4.2",
+    "ruff>=0.13.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = true
+strict_optional = true

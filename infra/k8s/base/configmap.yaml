@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nocodeml-config
+  namespace: nocodeml
+data:
+  NOCODEML_HOST: "0.0.0.0"
+  NOCODEML_PORT: "8000"
+  NOCODEML_ENVIRONMENT: "production"
+  NOCODEML_LOG_LEVEL: "INFO"
+  NOCODEML_AUTO_CREATE_TABLES: "false"
+  NOCODEML_RUN_MIGRATIONS_ON_STARTUP: "false"
+  NOCODEML_METRICS_ENABLED: "true"
+  NOCODEML_MAX_TRAINING_WORKERS: "4"
+  NOCODEML_EXECUTION_BACKEND: "celery"
+  NOCODEML_CELERY_QUEUE: "training"
+  NEXT_PUBLIC_API_URL: "https://nocodeml.example.com/api"

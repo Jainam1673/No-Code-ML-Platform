@@ -1,0 +1,119 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: nocodeml
+      POSTGRES_PASSWORD: nocodeml
+      POSTGRES_DB: nocodeml
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nocodeml -d nocodeml"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      NOCODEML_HOST: 0.0.0.0
+      NOCODEML_PORT: 8000
+      NOCODEML_ENVIRONMENT: development
+      NOCODEML_LOG_LEVEL: INFO
+      NOCODEML_AUTO_CREATE_TABLES: "false"
+      NOCODEML_RUN_MIGRATIONS_ON_STARTUP: "false"
+      NOCODEML_METRICS_ENABLED: "true"
+      NOCODEML_EXECUTION_BACKEND: celery
+      NOCODEML_DATABASE_URL: postgresql+psycopg://nocodeml:nocodeml@postgres:5432/nocodeml
+      NOCODEML_REDIS_URL: redis://redis:6379/0
+      NOCODEML_CELERY_BROKER_URL: redis://redis:6379/0
+      NOCODEML_CELERY_RESULT_BACKEND: redis://redis:6379/1
+      NOCODEML_CELERY_QUEUE: training
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - backend_artifacts:/app/artifacts
+    expose:
+      - "8000"
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "main.py", "worker"]
+    environment:
+      NOCODEML_EXECUTION_BACKEND: celery
+      NOCODEML_LOG_LEVEL: INFO
+      NOCODEML_AUTO_CREATE_TABLES: "false"
+      NOCODEML_RUN_MIGRATIONS_ON_STARTUP: "false"
+      NOCODEML_MAX_TRAINING_WORKERS: 2
+      NOCODEML_DATABASE_URL: postgresql+psycopg://nocodeml:nocodeml@postgres:5432/nocodeml
+      NOCODEML_REDIS_URL: redis://redis:6379/0
+      NOCODEML_CELERY_BROKER_URL: redis://redis:6379/0
+      NOCODEML_CELERY_RESULT_BACKEND: redis://redis:6379/1
+      NOCODEML_CELERY_QUEUE: training
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - backend_artifacts:/app/artifacts
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "main.py", "db-upgrade"]
+    environment:
+      NOCODEML_DATABASE_URL: postgresql+psycopg://nocodeml:nocodeml@postgres:5432/nocodeml
+      NOCODEML_REDIS_URL: redis://redis:6379/0
+      NOCODEML_CELERY_BROKER_URL: redis://redis:6379/0
+      NOCODEML_CELERY_RESULT_BACKEND: redis://redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://gateway/api
+    depends_on:
+      - backend
+    expose:
+      - "3000"
+
+  gateway:
+    image: nginx:1.27-alpine
+    depends_on:
+      - backend
+      - frontend
+    volumes:
+      - ./infra/docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "80:80"
+
+volumes:
+  pgdata:
+  backend_artifacts:

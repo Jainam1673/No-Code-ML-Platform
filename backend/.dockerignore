@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.env
+.env.*
+.git/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+artifacts/
+autogluon_tabular_*.txt
+*.ipynb

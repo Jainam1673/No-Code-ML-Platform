@@ -1,0 +1,42 @@
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Virtual environments
+**/.venv/
+
+# Frontend
+**/.next/
+**/node_modules/
+
+# Build artifacts
+frontend/out/
+frontend/dist/
+**/build/
+**/dist/
+
+# Local environment files
+**/.env
+**/.env.local
+**/.env.*.local
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+# Runtime artifacts
+artifacts/
+backend/artifacts/
+
+# Logs
+*.log
+
+# Notebook and local experiment outputs
+**/*.ipynb
+**/.ipynb_checkpoints/
