@@ -1,84 +1,104 @@
 # AI Platform Architecture
 
-## Design Goals
+## Purpose
 
-- Separate online inference/API concerns from heavy offline training workloads.
-- Preserve model lineage and job history with durable metadata.
-- Keep runtime deployable in both local compose and Kubernetes.
-- Provide clear operational hooks for SRE (health, metrics, migration workflow).
+This architecture is designed to demonstrate strong engineering fundamentals for ML platform development:
 
-## Logical Components
+- clean service boundaries
+- operational reliability
+- asynchronous workload isolation
+- deterministic developer experience
 
-- API Plane (FastAPI):
-  - Receives train/predict requests.
-  - Stores and exposes job/model metadata.
-  - Enqueues training jobs to Redis/Celery.
-- Training Plane (Celery Worker):
-  - Pulls queued training tasks.
-  - Runs AutoGluon tabular training.
-  - Persists artifacts and model registry metadata.
-- Data Plane:
-  - PostgreSQL for job/model records.
-  - Redis for queue broker/result backend.
-  - Artifact volume for trained model binaries.
-- Experience Plane:
-  - Next.js frontend with API integration.
+## Primary Quality Attributes
+
+- Reliability: dependency-aware readiness checks and migration-first rollouts.
+- Scalability: independent scaling of API and worker planes.
+- Operability: health and metrics endpoints plus runbooks.
+- Security baseline: non-root containers and constrained runtime posture.
+- Maintainability: typed contracts and service-centric backend organization.
+
+## System Planes
+
+- API Plane (FastAPI)
+  - Accepts train and predict requests.
+  - Persists and serves job/model metadata.
+  - Enqueues training tasks to Celery.
+- Training Plane (Celery Worker)
+  - Pulls queued tasks from Redis.
+  - Executes AutoGluon Tabular training.
+  - Writes model artifacts and metadata updates.
+- Data Plane
+  - PostgreSQL for durable job/model records.
+  - Redis for broker and result backend.
+  - Persistent artifact volume for model binaries.
+- Experience Plane
+  - Next.js frontend that surfaces platform status and API entrypoints.
+
+## Request and Training Flow
+
+1. Client submits `POST /v1/models/train` with dataset path and target column.
+2. API creates `job_records` entry with queued status.
+3. API dispatches training task to Celery queue.
+4. Worker marks job running and starts AutoGluon training.
+5. Trained model is written to artifact storage.
+6. Worker stores model metadata in `model_records` and JSON registry.
+7. Worker marks job succeeded (or failed with error details).
+8. Client polls `GET /v1/jobs/{job_id}` and performs inference via `POST /v1/models/{model_id}/predict`.
+
+## Deployment Topologies
+
+- Local topology
+  - Docker Compose with gateway, frontend, backend, worker, Redis, PostgreSQL.
+- Cluster topology
+  - Kubernetes deployments for backend, worker, frontend.
+  - Migration job for controlled schema rollout.
+  - Ingress and service resources for traffic management.
 
 ## Reliability Model
 
-- Liveness endpoint (`/livez`) checks process health only.
-- Readiness endpoint (`/readyz`) checks DB and Redis dependencies.
-- Prometheus metrics endpoint (`/metrics`) for scrape-based telemetry.
-- Kubernetes HPA on API, worker, and frontend deployments.
-- PodDisruptionBudgets to reduce voluntary outage during maintenance.
+- `GET /livez`: process liveness only.
+- `GET /readyz`: validates database and Redis connectivity.
+- `GET /metrics`: Prometheus scrape endpoint.
+- HPAs for API, worker, and frontend.
+- PodDisruptionBudgets to reduce voluntary downtime.
+- Rollout safety via rolling updates and probes.
 
-## Deployment Topology
+## Toolchain and Build Policy
 
-- Local: Docker Compose with gateway, API, worker, PostgreSQL, Redis, frontend.
-- Cluster: Kubernetes deployments + migration job + ingress.
-- Migration-first strategy: schema upgrades before API/worker rollout.
+- Backend dependency and execution workflow is `uv` only.
+- Frontend workflow is `bun` only.
+- Container builds preserve the same policy to reduce local-vs-prod drift.
 
-## Container Strategy
+## Runtime and Storage Model
 
-- Backend: Python multi-stage image with uv-managed dependencies resolved during build.
-- Frontend: Bun-based Next.js build and Bun runtime with standalone output.
-- Runtime containers execute as non-root to reduce attack surface.
+- Metadata model
+  - `job_records`: asynchronous lifecycle state
+  - `model_records`: model identity and provenance
+- Artifacts
+  - Filesystem-backed model output under `artifacts/models`
+  - JSON registry snapshots under `artifacts/registry`
 
-## Toolchain Policy
+## Security and Isolation Baseline
 
-- Python workflows use uv in local development and Docker builds.
-- Frontend workflows use Bun in local development and Docker builds.
-- Dockerfiles avoid npm and pip dependency workflows for application packages.
+- Non-root runtime users in containers.
+- Reduced Linux capabilities.
+- Network policy baseline in Kubernetes manifests.
+- Secrets externalized from plain manifests via secret references.
 
-## Kubernetes Runtime Baseline
+## Extensibility Path
 
-- RollingUpdate strategy with `maxUnavailable: 0` for app deployments.
-- Startup/readiness/liveness probes for safer rollout behavior.
-- Pod anti-affinity and topology spread constraints for resilience.
-- PodDisruptionBudgets to preserve availability during node events.
-
-## Model Lifecycle (Current)
-
-1. Client submits `/v1/models/train`.
-2. API creates job record and enqueues Celery task.
-3. Worker trains model and writes artifacts to persistent volume.
-4. Worker updates model metadata in PostgreSQL and registry JSON.
-5. Client polls `/v1/jobs/{job_id}` and uses `/v1/models/{model_id}/predict`.
-
-## Reference Artifacts
-
-- AutoGluon API surface exports are kept under `docs/reference/autogluon/` for offline reference.
-
-## Scale-Out Path
-
-- Isolate training onto dedicated node pools with taints/tolerations.
-- Add external object store-backed artifact registry.
-- Add distributed tracing and SLO-driven alerting.
-- Introduce authn/authz boundaries and tenant isolation.
+- Add tenant-aware authn/authz and policy layers.
+- Move artifact registry to object storage.
+- Add distributed tracing and SLO alerting integrations.
+- Introduce dedicated node pools/queues for accelerator-specific workloads.
 
 ## Accelerator Strategy
 
-- Baseline CPU worker deployment in base manifests.
-- Optional GPU worker overlay under `infra/k8s/overlays/gpu-worker`.
-- Runtime capability introspection endpoint (`/v1/system/capabilities`) for accelerator-aware operations.
-- TPU workloads can be introduced as dedicated worker pools where model stack requires TPU-compatible frameworks.
+- CPU worker deployment is the baseline.
+- Optional GPU worker overlay exists in `infra/k8s/overlays/gpu-worker`.
+- Runtime introspection endpoint `GET /v1/system/capabilities` reports host capabilities.
+- TPU can be added as separate worker pools for TPU-compatible training stacks.
+
+## Reference Notes
+
+AutoGluon API reference snapshots are stored under `docs/reference/autogluon/` for offline browsing and implementation support.

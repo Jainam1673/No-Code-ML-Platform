@@ -1,12 +1,16 @@
 # Frontend
 
-Next.js frontend for the No Code ML Platform.
+Next.js frontend for the No-Code ML Platform.
 
-## Tooling
+This UI is intentionally lightweight and operationally focused: it surfaces platform status and acts as an entry point to backend API workflows.
 
-- Package manager: Bun
-- Build: Bun running Next.js build
-- Runtime in container: Bun executing Next standalone server
+## Toolchain Policy
+
+- Package manager: `bun`
+- Local development: `bun run dev`
+- Production build and runtime: `bun run build` and `bun run start`
+
+Do not introduce npm-based dependency workflows.
 
 ## Local Development
 
@@ -15,7 +19,9 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-Default URL: http://localhost:3000
+Default URL:
+
+- http://localhost:3000
 
 Custom backend URL:
 
@@ -23,24 +29,44 @@ Custom backend URL:
 NEXT_PUBLIC_API_URL=http://localhost:8000 bun run dev
 ```
 
-## Production Build
+## Environment Variables
+
+- `NEXT_PUBLIC_API_URL`: Base URL for backend health and API access used by the UI.
+
+In Compose, this is typically set to a gateway-routed value.
+
+## Build and Start
 
 ```bash
 bun run build
 bun run start
 ```
 
-## Container Build Strategy
+## Quality
 
-- Multi-stage Docker build
-- Bun dependency stage
-- Bun build stage
-- Bun runtime stage with Next standalone output
+```bash
+bun run lint
+bun run build
+```
 
-This keeps runtime footprint smaller while preserving Bun-only workflow in Docker.
+## Architecture Notes
+
+- App Router structure under `app/`
+- Server-rendered homepage fetches backend health for quick status feedback
+- Global design tokens and typography defined in `app/globals.css` and `app/layout.tsx`
+
+## Container Strategy
+
+Frontend image uses multi-stage Docker build:
+
+1. Dependency install via Bun
+2. Next.js production build
+3. Runtime stage serving standalone output with Bun
+
+This keeps image size and runtime complexity lower while maintaining Bun-only parity.
 
 ## Deployment
 
-- Local compose entrypoint is defined in the root docker-compose.yml.
-- Kubernetes manifests are under infra/k8s/base.
+- Local stack integration via root `docker-compose.yml`
+- Kubernetes manifests in `infra/k8s/base/frontend.yaml`
 

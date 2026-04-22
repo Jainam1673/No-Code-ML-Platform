@@ -1,57 +1,65 @@
 # Backend
 
-Backend runtime for the platform, built around typed service boundaries and asynchronous ML training orchestration.
+Backend runtime for model training orchestration, metadata persistence, and inference serving.
+
+Design goals:
+
+- Keep domain logic explicit and testable.
+- Isolate request handling from orchestration.
+- Support async training with durable job lifecycle tracking.
+- Preserve deployability from local development to Kubernetes.
 
 ## Technology
 
 - Python 3.12
-- uv for dependency management and command execution
-- FastAPI for API endpoints
-- Celery + Redis for distributed training jobs
-- SQLAlchemy + Alembic for metadata persistence and schema migrations
-- AutoGluon Tabular as the training engine
+- `uv` for dependency resolution and command execution
+- FastAPI for HTTP API surface
+- Celery + Redis for asynchronous training
+- SQLAlchemy + Alembic for persistence and schema migrations
+- AutoGluon Tabular for model training/inference
 
-## Backend Architecture
+## Package Layout
 
-- app/api/routes: HTTP entrypoints
-- app/services: business logic and orchestration
-- app/db: models, sessions, migrations integration
-- app/worker: Celery app and task execution
-- app/core: config, middleware, logging
+- `app/api/routes`: HTTP endpoints, request/response mapping
+- `app/services`: business orchestration and domain workflows
+- `app/schemas`: typed contracts for API payloads
+- `app/db`: ORM models, sessions, migration integration
+- `app/worker`: Celery app and background task definitions
+- `app/core`: config, middleware, logging
 
-Artifact layout:
+Artifacts and model registry:
 
-- artifacts/models/<model_id>
-- artifacts/registry/<model_id>.json
+- `artifacts/models/<model_id>`
+- `artifacts/registry/<model_id>.json`
 
-## Local Setup (uv)
+## Local Setup
 
 ```bash
 uv sync
 cp .env.example .env
 ```
 
-Run migrations:
+Apply migrations:
 
 ```bash
 uv run python main.py db-upgrade
 ```
 
-## Run Modes
+## Runtime Commands
 
-API server:
+Run API server:
 
 ```bash
 uv run python main.py serve
 ```
 
-Worker:
+Run worker:
 
 ```bash
 uv run python main.py worker
 ```
 
-Installation check:
+Verify AutoGluon installation:
 
 ```bash
 uv run python main.py check
@@ -59,30 +67,60 @@ uv run python main.py check
 
 ## Operational Endpoints
 
-- /docs
-- /redoc
-- /metrics
-- /livez
-- /readyz
-- /health
+- `GET /docs`
+- `GET /redoc`
+- `GET /metrics`
+- `GET /livez`
+- `GET /readyz`
+- `GET /health`
 
-## Core API
+## Core API Endpoints
 
-- POST /v1/models/train
-- GET /v1/jobs/{job_id}
-- GET /v1/models
-- GET /v1/models/{model_id}
-- POST /v1/models/{model_id}/predict
-- GET /v1/system/capabilities
+- `POST /v1/models/train`
+- `GET /v1/jobs/{job_id}`
+- `GET /v1/models`
+- `GET /v1/models/{model_id}`
+- `POST /v1/models/{model_id}/predict`
+- `GET /v1/system/capabilities`
 
-## Reliability Defaults
+## Training Lifecycle
 
-- Job state transitions persisted in SQL
-- Celery queue prefetch multiplier tuned for fair dispatch
-- Late acknowledgements enabled
-- Configurable soft/hard task time limits
-- Readiness requires both PostgreSQL and Redis availability
+1. Client submits training request with dataset path and target column.
+2. API persists queued job status.
+3. Job dispatches via Celery (or local threadpool fallback).
+4. Worker trains AutoGluon model and writes artifacts.
+5. Model metadata is persisted in PostgreSQL and JSON registry.
+6. Client polls job status and uses model for prediction.
+
+## Reliability Characteristics
+
+- Durable job state transitions in SQL.
+- Celery late acknowledgements for safer task handling.
+- Configurable soft and hard task time limits.
+- Worker prefetch tuning for fairer queue distribution.
+- Readiness checks both PostgreSQL and Redis dependencies.
+
+## Configuration Surface
+
+Primary config is read from environment variables with `NOCODEML_` prefix. Key controls include:
+
+- Server host and port
+- DB and Redis URLs
+- Celery broker/result backend/queue
+- Worker concurrency
+- Metrics toggle
+- Runtime migration and table creation toggles
+
+See `app/core/config.py` for the full settings model.
+
+## Testing and Quality
+
+```bash
+uv run pytest
+uv run ruff check app tests main.py
+uv run mypy app
+```
 
 ## Container Notes
 
-Backend Docker build uses uv in multi-stage mode and produces a runtime image with only application code and resolved dependencies.
+The backend Docker image uses a multi-stage build with `uv` to produce a lean runtime image while preserving deterministic dependency resolution.

@@ -1,53 +1,57 @@
-# Role Matrix: Personal and Professional Usage
+# Role Matrix
 
-## SWE
+This matrix clarifies how different engineering roles interact with this platform. It is intentionally written to support interview discussion across software, infrastructure, and ML domains.
 
-- Extend API routes in backend/app/api/routes.
-- Add service-layer logic in backend/app/services with typed contracts.
-- Use uv for reproducible local and CI execution.
+## Software Engineer
 
-## SRE
+- Implement request contracts in `backend/app/schemas`.
+- Keep HTTP handlers thin in `backend/app/api/routes`.
+- Place orchestration logic in `backend/app/services`.
+- Validate behavior with backend tests and static checks.
 
-- Operate liveness/readiness/metrics endpoints.
-- Apply docs/OPERATIONS.md for incident response and rollback.
-- Use Kubernetes probes, PDBs, HPA, and NetworkPolicies from infra/k8s/base.
+## Site Reliability Engineer (SRE)
 
-## DevOps
+- Operate service health via `/livez`, `/readyz`, `/health`, and `/metrics`.
+- Use `docs/OPERATIONS.md` for incident response and mitigation.
+- Tune autoscaling, disruption budgets, and rollout controls in Kubernetes manifests.
 
-- Build and publish container images from Dockerfiles.
-- Use compose for local parity and kustomize for cluster deploys.
-- Apply migration-first release process via backend-migrate job.
+## DevOps Engineer
+
+- Build and publish backend/frontend images.
+- Maintain local parity with Docker Compose.
+- Enforce migration-first deployment path via migration job.
+- Keep CI quality gates aligned with repository standards.
 
 ## Platform Engineer
 
-- Add overlays under infra/k8s/overlays for environment-specific policy.
-- Enable GPU training with infra/k8s/overlays/gpu-worker.
-- Integrate secret managers and policy engines in cluster baseline.
+- Extend baseline manifests with environment-specific overlays.
+- Integrate cluster policy controls, secret management, and network security.
+- Add accelerator-aware worker pools where required.
 
-## Data Scientist / Data Engineer
+## ML Engineer
 
-- Submit training jobs with dataset path and target via /v1/models/train.
-- Inspect model metadata and inference endpoints through v1 APIs.
-- Use artifact and registry outputs for experiment handoff.
+- Extend training workflows and model lifecycle behavior.
+- Tune Celery queue configuration and worker concurrency.
+- Add model-specific preprocessing and evaluation pipelines.
+- Improve artifact lineage and reproducibility metadata.
 
-## ML Engineer / Scientist
+## Data Scientist / Analytics Engineer
 
-- Scale workers independently from API for long-running training.
-- Tune queue behavior (Celery config, worker concurrency, queue names).
-- Add model-specific preprocessing and evaluation logic in services.
+- Submit training jobs using `POST /v1/models/train`.
+- Track job lifecycle using `GET /v1/jobs/{job_id}`.
+- Consume model metadata and prediction APIs for experiments.
 
-## GPU / TPU Engineers
+## Accelerator Engineer (GPU/TPU)
 
-- GPU path: worker overlay requests nvidia.com/gpu and dedicated queue.
-- TPU path: platform exposes runtime capability endpoint and can be extended via accelerator-specific worker pools.
-- Capability introspection endpoint: /v1/system/capabilities.
+- Use GPU overlay under `infra/k8s/overlays/gpu-worker`.
+- Validate runtime capabilities with `GET /v1/system/capabilities`.
+- Introduce hardware-specific worker pools and queue routing strategy.
 
-## Personal Use
+## Interview Positioning
 
-- Run complete local stack with Docker Compose.
-- Iterate rapidly with uv (backend) and Bun (frontend).
+Use this repository to demonstrate:
 
-## Professional Use
-
-- Deploy to Kubernetes with secure baseline and upgrade-safe migrations.
-- Evolve into enterprise controls: authn/authz, tracing, governance, cost controls.
+- Full-stack ownership from API to deployment.
+- Practical MLOps architecture with asynchronous training.
+- Production operations mindset with reliability safeguards.
+- Clear extension path toward enterprise-scale platform controls.

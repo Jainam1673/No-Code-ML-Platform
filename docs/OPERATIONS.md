@@ -1,65 +1,98 @@
 # Operations Runbook
 
-## Core SLO Targets
+Operational guidance for running this platform in production-like environments.
+
+## Service Objectives (Initial Targets)
 
 - API availability: 99.9%
-- P95 API latency: < 800ms for inference endpoints
-- Training queue lag: < 5 minutes at normal load
-- Training job success rate: > 98%
+- P95 inference latency: < 800ms
+- Queue lag: < 5 minutes under normal load
+- Training success rate: > 98%
 
-## Golden Signals
+These are baseline targets and should be tuned with real traffic and model profiles.
 
-- Traffic: requests per second on `/v1/*`
-- Latency: p50/p95 request duration
-- Errors: 4xx and 5xx rates
-- Saturation: CPU, memory, queue depth, worker concurrency utilization
+## Key Signals
 
-## Baseline Alerts
+- Traffic: request rate on `GET/POST /v1/*`
+- Latency: p50/p95 API duration
+- Errors: 4xx/5xx rates and failure distribution by endpoint
+- Saturation:
+  - API CPU and memory
+  - Worker CPU and memory
+  - Redis queue depth
+  - Worker concurrency utilization
 
-- API health degraded for 5 minutes
-- Database unreachable from API/worker
-- Redis unreachable from API/worker
-- Worker replicas unavailable
-- Queue lag high for 10 minutes
-- Pod restart loop (CrashLoopBackOff)
+## Alert Recommendations
+
+- API health degraded for > 5 minutes
+- Readiness failures due to PostgreSQL or Redis dependencies
+- Worker deployment unavailable or crash looping
+- Queue lag above threshold for > 10 minutes
+- Elevated training failure ratio over rolling time window
 
 ## Deployment Procedure
 
-1. Deploy infrastructure dependencies: PostgreSQL and Redis.
-2. Run database migration job.
-3. Deploy backend API and worker.
-4. Deploy frontend and ingress.
-5. Verify health (`/health`) and metrics (`/metrics`).
-6. Execute smoke test training and prediction requests.
+1. Confirm target image tags and release notes.
+2. Ensure infrastructure dependencies are healthy (PostgreSQL, Redis).
+3. Run migration job before app rollout.
+4. Deploy backend API and workers.
+5. Deploy frontend and ingress/gateway.
+6. Validate probes and health endpoints.
+7. Execute smoke test for training and inference.
+8. Monitor error rate and queue depth for at least one observation window.
+
+## Post-Deploy Verification
+
+- `GET /livez` is stable.
+- `GET /readyz` reports database and Redis as healthy.
+- `GET /metrics` is scrape-ready.
+- Training job lifecycle transitions complete (queued -> running -> succeeded/failed).
+- Inference endpoint returns valid predictions for a known model.
 
 ## Rollback Procedure
 
-1. Roll back backend and worker image tags.
-2. If migration is backward-compatible, keep schema and resume traffic.
-3. If migration requires rollback, execute a controlled down migration from Alembic.
-4. Re-run smoke tests.
+1. Roll back backend and worker images.
+2. Evaluate schema compatibility with rolled-back application version.
+3. If required, perform controlled Alembic downgrade.
+4. Re-validate health, readiness, and smoke tests.
+5. Publish incident summary and remediation tasks.
 
-## Capacity Guidelines
+## Incident Response Checklist
 
-- Start with 2 API replicas and 2 worker replicas.
-- Increase worker concurrency only after measuring memory usage per training job.
-- Keep model artifacts on persistent shared storage.
-- For heavy workloads, isolate training and inference onto separate node pools.
+1. Check `GET /health` for dependency state.
+2. Compare `GET /livez` and `GET /readyz` behavior to identify dependency impact.
+3. Inspect backend logs for request ID correlated failures.
+4. Inspect worker logs for task exceptions and retry patterns.
+5. Check Redis queue depth and broker availability.
+6. Inspect PostgreSQL connectivity, lock contention, and resource pressure.
+7. Apply mitigations:
+   - scale workers if backlog is rising
+   - reduce training concurrency if memory pressure is high
+   - roll back faulty release if regression is confirmed
 
-## Security Baseline
+## Capacity Planning Guidelines
 
-- Do not store plaintext credentials in manifests.
-- Use Kubernetes secrets or external secret manager.
-- Restrict network access to PostgreSQL and Redis.
-- Enable image scanning in CI.
-- Run containers as non-root where possible.
+- Start with 2 API and 2 worker replicas.
+- Tune worker concurrency only after measuring memory per training job.
+- Keep artifact storage persistent and sized for model lifecycle retention.
+- Isolate long-running training from inference nodes under heavier workloads.
 
-## Incident Checklist
+## Security and Compliance Baseline
 
-1. Check `/health` dependency statuses.
-2. Check `/readyz` and `/livez` endpoint behavior.
-3. Check backend logs for request failures and request IDs.
-4. Check worker logs for task failures.
-5. Check Redis availability and queue pressure.
-6. Check database connectivity and lock contention.
-7. Scale worker replicas if backlog is rising and resources are available.
+- Never commit plaintext credentials.
+- Use Kubernetes secrets or managed external secret providers.
+- Restrict network access to data stores.
+- Run vulnerability scanning in CI/CD.
+- Keep containers non-root with minimal privileges.
+
+## Common Failure Modes
+
+- Queue backlog growth
+  - Symptoms: rising job wait time and stale queued state
+  - Actions: scale workers, inspect Redis health, verify worker startup/config
+- Migration mismatch
+  - Symptoms: startup failures or ORM errors after deploy
+  - Actions: verify migration order, apply missing revision, roll back app if needed
+- Resource exhaustion during training
+  - Symptoms: OOM kills, worker restart loops, increased task failures
+  - Actions: lower concurrency, adjust memory limits, split workloads by model profile
