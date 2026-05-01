@@ -1,57 +1,66 @@
-# Role Matrix
+# Domain Boundaries & Responsibility Matrix
 
-This matrix clarifies how different engineering roles interact with this platform. It is intentionally written to support interview discussion across software, infrastructure, and ML domains.
+This document defines the intersection of engineering domains within the No-Code ML Platform. It serves as a guide for understanding how different personas interact with the system and where their accountabilities lie.
 
-## Software Engineer
+---
 
-- Implement request contracts in `backend/app/schemas`.
-- Keep HTTP handlers thin in `backend/app/api/routes`.
-- Place orchestration logic in `backend/app/services`.
-- Validate behavior with backend tests and static checks.
+## 🛠️ Software Engineering (SWE)
+*Focus: API surface, business logic, and contract enforcement.*
 
-## Site Reliability Engineer (SRE)
+*   **Accountabilities:**
+    *   Implementing robust, typed request/response schemas (Pydantic).
+    *   Maintaining clean service boundaries to prevent "leaky abstractions."
+    *   Ensuring high unit test coverage and API contract stability.
+*   **Key Files:** `backend/app/api/`, `backend/app/schemas/`, `backend/app/services/`.
 
-- Operate service health via `/livez`, `/readyz`, `/health`, and `/metrics`.
-- Use `docs/OPERATIONS.md` for incident response and mitigation.
-- Tune autoscaling, disruption budgets, and rollout controls in Kubernetes manifests.
+---
 
-## DevOps Engineer
+## 🏗️ Platform & Infrastructure Engineering
+*Focus: Container orchestration, CI/CD, and resource management.*
 
-- Build and publish backend/frontend images.
-- Maintain local parity with Docker Compose.
-- Enforce migration-first deployment path via migration job.
-- Keep CI quality gates aligned with repository standards.
+*   **Accountabilities:**
+    *   Designing the Kubernetes baseline (HPA, PDB, NetworkPolicies).
+    *   Managing the OCI build pipeline and artifact lifecycle.
+    *   Implementing hardware-specific worker pools (e.g., GPU/TPU overlays).
+*   **Key Files:** `infra/k8s/`, `Dockerfile`, `Makefile`, `docker-compose.yml`.
 
-## Platform Engineer
+---
 
-- Extend baseline manifests with environment-specific overlays.
-- Integrate cluster policy controls, secret management, and network security.
-- Add accelerator-aware worker pools where required.
+## 📈 Site Reliability Engineering (SRE)
+*Focus: System availability, latency, and operational excellence.*
 
-## ML Engineer
+*   **Accountabilities:**
+    *   Defining and monitoring SLOs/SLIs (Prometheus/Grafana).
+    *   Developing runbooks for incident triage and disaster recovery.
+    *   Optimizing resource utilization and deployment safety (probes, rollouts).
+*   **Key Files:** `docs/OPERATIONS.md`, `backend/app/api/routes/health.py`.
 
-- Extend training workflows and model lifecycle behavior.
-- Tune Celery queue configuration and worker concurrency.
-- Add model-specific preprocessing and evaluation pipelines.
-- Improve artifact lineage and reproducibility metadata.
+---
 
-## Data Scientist / Analytics Engineer
+## 🤖 Machine Learning Operations (MLOps)
+*Focus: Training workflows, model provenance, and inference scaling.*
 
-- Submit training jobs using `POST /v1/models/train`.
-- Track job lifecycle using `GET /v1/jobs/{job_id}`.
-- Consume model metadata and prediction APIs for experiments.
+*   **Accountabilities:**
+    *   Managing the asynchronous training lifecycle (Celery/Redis).
+    *   Ensuring model artifact durability and metadata integrity.
+    *   Implementing hardware-accelerated inference strategies.
+*   **Key Files:** `backend/app/worker/`, `backend/app/services/model_service.py`.
 
-## Accelerator Engineer (GPU/TPU)
+---
 
-- Use GPU overlay under `infra/k8s/overlays/gpu-worker`.
-- Validate runtime capabilities with `GET /v1/system/capabilities`.
-- Introduce hardware-specific worker pools and queue routing strategy.
+## 📋 Responsibility Assignment (RACI)
 
-## Interview Positioning
+| Component | SWE | SRE | Platform | MLOps |
+| :--- | :---: | :---: | :---: | :---: |
+| **API Logic** | **A**/R | I | C | C |
+| **K8s Manifests** | C | **A** | R | I |
+| **Training Engine** | C | I | C | **A**/R |
+| **DB Migrations** | R | I | **A** | C |
+| **Health Monitoring**| C | **A**/R | I | I |
 
-Use this repository to demonstrate:
+*Legend: **A**=Accountable, **R**=Responsible, **C**=Consulted, **I**=Informed*
 
-- Full-stack ownership from API to deployment.
-- Practical MLOps architecture with asynchronous training.
-- Production operations mindset with reliability safeguards.
-- Clear extension path toward enterprise-scale platform controls.
+---
+
+## 💡 Interview Positioning
+This platform is designed to demonstrate **Cross-Functional Proficiency**. Candidates should use this repository to showcase their ability to "think across the stack"—from writing a type-safe FastAPI endpoint to diagnosing a Kubernetes OCI permission error or tuning a Celery task retry policy.

@@ -1,180 +1,133 @@
-# No-Code ML Platform
+# No-Code ML Platform (Enterprise Reference)
 
-Production-grade ML platform reference implementation with a clear separation of concerns between online serving and offline model training.
+[![CI](https://github.com/your-org/nocodeml/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/nocodeml/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This repository is designed for interview demonstrations of system design, backend engineering, cloud-native operations, and practical MLOps execution.
+A production-grade, cloud-native Machine Learning platform demonstrating senior-level engineering principles in **asynchronous system design**, **MLOps automation**, and **Kubernetes orchestration**.
 
-## Why This Project
+This repository serves as a reference implementation for a scalable, self-service ML infrastructure, prioritizing architectural separation, operational observability, and deterministic delivery.
 
-- Shows end-to-end ML system ownership: API, async training, metadata persistence, and frontend integration.
-- Uses modern, deterministic toolchains: `uv` for Python and `Bun` for frontend.
-- Demonstrates production concerns: health/readiness, migrations, autoscaling, rollout safety, and operational runbooks.
-- Keeps implementation readable and extensible for future enterprise features.
+---
 
-## Architecture At A Glance
+## 🏗️ System Architecture
 
-- API plane: FastAPI service for train/predict requests and metadata access.
-- Training plane: Celery workers running AutoGluon Tabular training jobs.
-- Data plane: PostgreSQL for durable records, Redis for queueing.
-- Artifact plane: persisted model files and JSON model registry.
-- Experience plane: Next.js frontend for status and platform entry.
-- Deployment plane: Docker Compose for local parity and Kubernetes for production orchestration.
+The platform is architected around a **Decoupled Control & Data Plane** model, ensuring that long-running training workloads never impact API responsiveness or system stability.
 
-See detailed docs:
+```mermaid
+graph TD
+    subgraph Experience_Plane
+        FE[Next.js Frontend]
+    end
 
-- `docs/ARCHITECTURE.md`
-- `docs/OPERATIONS.md`
-- `docs/ROLE_MATRIX.md`
-- `docs/RELEASE_CHECKLIST.md`
-- `CONTRIBUTING.md`
+    subgraph API_Plane
+        LB[NGINX Gateway]
+        API[FastAPI Service]
+        PROM[Prometheus Metrics]
+    end
 
-## Tech Stack
+    subgraph Training_Plane
+        Worker[Celery Worker Pool]
+        AG[AutoGluon Tabular]
+    end
 
-- Backend: Python 3.12, FastAPI, SQLAlchemy, Alembic, Celery, AutoGluon Tabular
-- Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS
-- Infra: PostgreSQL 16, Redis 7, NGINX, Docker Compose, Kubernetes
-- Tooling policy:
-  - Python dependencies and execution via `uv`
-  - Frontend dependencies and runtime via `Bun`
-  - No pip-based or npm-based application dependency flow in Dockerfiles
+    subgraph Data_Plane
+        PG[(PostgreSQL - Metadata)]
+        RD[(Redis - Broker/Result)]
+        FS[[Persistent Artifact Store]]
+    end
 
-## Quickstart (Local Native)
-
-Prerequisites:
-
-- Python 3.12
-- `uv`
-- `bun`
-- Docker (optional)
-
-1. Backend setup and migration
-
-```bash
-make backend-sync
-make backend-db-upgrade
+    FE --> LB
+    LB --> API
+    API --> RD
+    RD --> Worker
+    Worker --> AG
+    Worker --> FS
+    Worker --> PG
+    API --> PG
+    API --> FS
+    API --> PROM
 ```
 
-2. Run backend API
+### Architectural Highlights
 
+*   **Asynchronous Execution Pattern:** Training jobs are offloaded to a dedicated worker pool via Redis, preventing head-of-line blocking on the API.
+*   **Hybrid Metadata Strategy:** Combines the ACID guarantees of PostgreSQL for job state with a redundant JSON file-based registry for artifact provenance and disaster recovery.
+*   **Deterministic Environments:** Leverages `uv` for Python and `Bun` for Node.js to ensure bit-for-bit parity between local development and production OCI images.
+*   **Infrastructure-as-Code (IaC) Ready:** Includes comprehensive Kubernetes manifests with HPA, PodDisruptionBudgets, and fine-grained NetworkPolicies.
+
+---
+
+## 🛠️ Tech Stack & Engineering Standards
+
+*   **Backend:** Python 3.12, FastAPI (Async), SQLAlchemy 2.0 (Typed), Alembic (Migrations), Celery 5.5.
+*   **ML Engine:** AutoGluon Tabular (Multi-modal ensemble learning).
+*   **Frontend:** Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4.
+*   **Infrastructure:** PostgreSQL 16, Redis 7, NGINX, Docker, Kubernetes.
+*   **Standards:** Non-root execution, RFC-compliant health probes, Prometheus instrumentation, and strict type safety.
+
+---
+
+## 🚀 Quickstart: Local Development
+
+The project uses a unified `Makefile` to abstract environment complexities.
+
+### Prerequisites
+* Python 3.12+ & `uv`
+* Node.js & `bun`
+* Docker (for service-backed development)
+
+### 1. Bootstrap Services
 ```bash
-make backend-serve
+docker compose up -d postgres redis
 ```
 
-3. Run async training worker (new terminal)
-
+### 2. Initialize Backend
 ```bash
-make backend-worker
+make backend-sync        # Install dependencies via uv
+make backend-db-upgrade  # Run Alembic migrations
 ```
 
-4. Run frontend (new terminal)
+### 3. Launch Services
+| Component | Command | Endpoint |
+| :--- | :--- | :--- |
+| **API** | `make backend-serve` | [localhost:8000/docs](http://localhost:8000/docs) |
+| **Worker** | `make backend-worker` | N/A (Logs to stdout) |
+| **Frontend** | `make frontend-dev` | [localhost:3000](http://localhost:3000) |
 
+---
+
+## ☸️ Cloud-Native Deployment
+
+The platform is designed for high-availability deployment on Kubernetes.
+
+### Production Readiness Features
+*   **Horizontal Scaling:** Independent HPA configurations for API and Training planes.
+*   **Security Hardening:** Pods run as `non-root`, drop all Linux capabilities, and use `readOnlyRootFilesystem` where applicable.
+*   **Zero-Downtime Rollouts:** Configured with `RollingUpdate` strategies and readiness/liveness/startup probes.
+*   **Network Isolation:** Strict K8s `NetworkPolicies` restrict traffic between planes (e.g., Frontend cannot talk to PostgreSQL directly).
+
+### Deploy to Cluster
 ```bash
-make frontend-install
-make frontend-dev
-```
-
-Access points:
-
-- Frontend: http://localhost:3000
-- Backend docs: http://localhost:8000/docs
-- Backend health: http://localhost:8000/health
-- Backend metrics: http://localhost:8000/metrics
-
-## Quickstart (Docker Compose)
-
-Start all services:
-
-```bash
-docker compose up --build
-```
-
-Apply migrations before first API/worker usage:
-
-```bash
-docker compose run --rm migrate
-```
-
-Compose gateway and services:
-
-- Frontend gateway: http://localhost
-- Backend health via gateway: http://localhost/api/health
-- Backend docs: http://localhost/docs
-- PostgreSQL: localhost:5432
-- Redis: localhost:6379
-
-## Core API Surface
-
-- `GET /livez`
-- `GET /readyz`
-- `GET /health`
-- `GET /metrics`
-- `GET /v1/system/capabilities`
-- `POST /v1/models/train`
-- `GET /v1/jobs/{job_id}`
-- `GET /v1/models`
-- `GET /v1/models/{model_id}`
-- `POST /v1/models/{model_id}/predict`
-
-## Repository Layout
-
-```text
-backend/   FastAPI API, Celery worker, DB models/migrations, services
-frontend/  Next.js application
-infra/     Docker and Kubernetes manifests
-docs/      Architecture, operations, release, role matrix, references
-```
-
-## Interview Demo Flow
-
-1. Explain architecture separation: API plane vs training plane.
-2. Show reliability endpoints (`/livez`, `/readyz`, `/metrics`).
-3. Submit a training request and poll job status.
-4. List trained models and run prediction.
-5. Walk through deployment safety controls in Kubernetes manifests.
-6. Highlight operational readiness with `docs/OPERATIONS.md` and `docs/RELEASE_CHECKLIST.md`.
-
-## Kubernetes Deployment Baseline
-
-1. Set real image tags in `infra/k8s/base/backend.yaml` and `infra/k8s/base/frontend.yaml`.
-2. Create real secrets from `infra/k8s/base/secret.example.yaml`.
-3. Apply manifests:
-
-```bash
+# 1. Apply base manifests
 kubectl apply -k infra/k8s/base
-```
 
-4. Trigger migration job:
-
-```bash
-kubectl -n nocodeml create job --from=job/backend-migrate backend-migrate-$(date +%s)
-```
-
-5. Validate rollout:
-
-```bash
-kubectl -n nocodeml get deploy,pods,svc,hpa,pdb
-```
-
-Optional GPU workers:
-
-```bash
+# 2. (Optional) Enable GPU training
 kubectl apply -k infra/k8s/overlays/gpu-worker
 ```
 
-## Current Production Readiness Features
+---
 
-- Non-root containers and reduced Linux capabilities
-- Readiness/liveness/startup probes
-- Rolling updates with disruption controls
-- PodDisruptionBudgets and autoscaling
-- Migration-first deployment path
-- Queue-backed asynchronous training execution
+## 📖 Deep Dive Documentation
 
-## What Is Next
+For detailed insights into specific engineering domains:
 
-Planned enhancements for enterprise-hardening:
+*   **[Architecture Design](./docs/ARCHITECTURE.md)**: Rationale, failure modes, and scalability targets.
+*   **[Operations & SRE Runbook](./docs/OPERATIONS.md)**: Health monitoring, metrics, and incident response.
+*   **[Release Governance](./docs/RELEASE_CHECKLIST.md)**: Quality gates and rollout procedures.
+*   **[Security & RBAC](./docs/ROLE_MATRIX.md)**: Permission models and access control.
 
-- Authentication and authorization boundaries
-- Object store-backed artifact registry
-- Tracing and SLO-driven alerting dashboards
-- Multi-tenant resource controls and governance policies
+---
+
+## 🤝 Contributing
+
+We maintain high standards for code quality and testing. Please review [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting a Pull Request.

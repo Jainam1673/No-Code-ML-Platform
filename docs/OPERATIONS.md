@@ -1,98 +1,90 @@
-# Operations Runbook
+# SRE Operations Runbook: No-Code ML Platform
 
-Operational guidance for running this platform in production-like environments.
+This document defines the operational standards, reliability targets, and incident response procedures for the No-Code ML Platform.
 
-## Service Objectives (Initial Targets)
+---
 
-- API availability: 99.9%
-- P95 inference latency: < 800ms
-- Queue lag: < 5 minutes under normal load
-- Training success rate: > 98%
+## 📈 Service Level Objectives (SLOs)
 
-These are baseline targets and should be tuned with real traffic and model profiles.
+We target **99.9% Availability** for the API Plane and **98% Success Rate** for the Training Plane.
 
-## Key Signals
+| Service | Indicator (SLI) | Target | Window |
+| :--- | :--- | :--- | :--- |
+| **API Plane** | Availability (Successful requests / Total requests) | 99.9% | 28 Days |
+| **API Plane** | Latency (P95 of `/v1/models/*/predict`) | < 500ms | 28 Days |
+| **Training Plane** | Quality (Successful jobs / Total submitted) | 98.0% | 28 Days |
+| **Training Plane** | Freshness (Max queue delay) | < 2 mins | Rolling 1h |
 
-- Traffic: request rate on `GET/POST /v1/*`
-- Latency: p50/p95 API duration
-- Errors: 4xx/5xx rates and failure distribution by endpoint
-- Saturation:
-  - API CPU and memory
-  - Worker CPU and memory
-  - Redis queue depth
-  - Worker concurrency utilization
+---
 
-## Alert Recommendations
+## 🔍 Monitoring & Observability
 
-- API health degraded for > 5 minutes
-- Readiness failures due to PostgreSQL or Redis dependencies
-- Worker deployment unavailable or crash looping
-- Queue lag above threshold for > 10 minutes
-- Elevated training failure ratio over rolling time window
+### Health Endpoints
+*   `/livez`: Process liveness.
+*   `/readyz`: Comprehensive dependency check (PostgreSQL + Redis).
+*   `/metrics`: Prometheus format exports.
 
-## Deployment Procedure
+### Critical Prometheus Queries (PromQL)
+*   **API Error Rate:** `rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])`
+*   **P99 Latency:** `histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))`
+*   **Queue Backlog:** `celery_queue_length{queue="training"}`
 
-1. Confirm target image tags and release notes.
-2. Ensure infrastructure dependencies are healthy (PostgreSQL, Redis).
-3. Run migration job before app rollout.
-4. Deploy backend API and workers.
-5. Deploy frontend and ingress/gateway.
-6. Validate probes and health endpoints.
-7. Execute smoke test for training and inference.
-8. Monitor error rate and queue depth for at least one observation window.
+---
 
-## Post-Deploy Verification
+## 🛠️ Change Management & Deployment
 
-- `GET /livez` is stable.
-- `GET /readyz` reports database and Redis as healthy.
-- `GET /metrics` is scrape-ready.
-- Training job lifecycle transitions complete (queued -> running -> succeeded/failed).
-- Inference endpoint returns valid predictions for a known model.
+### Deployment Strategy
+1.  **Staging Validation:** All changes must pass CI and be validated in a pre-production environment.
+2.  **Migration-First:** Database migrations (`make backend-db-upgrade`) must be successfully applied before rolling out new application pods.
+3.  **Rolling Updates:** K8s Deployments use `RollingUpdate` with `maxSurge: 1` and `maxUnavailable: 0` to ensure zero-downtime.
 
-## Rollback Procedure
+### Rollback Trigger Criteria
+*   API 5xx error rate > 1% for 3 consecutive minutes post-deploy.
+*   P95 latency increases by > 50% from baseline.
+*   `readyz` probes failing on > 20% of the fleet.
 
-1. Roll back backend and worker images.
-2. Evaluate schema compatibility with rolled-back application version.
-3. If required, perform controlled Alembic downgrade.
-4. Re-validate health, readiness, and smoke tests.
-5. Publish incident summary and remediation tasks.
+---
 
-## Incident Response Checklist
+## 🚨 Incident Response (Tiered)
 
-1. Check `GET /health` for dependency state.
-2. Compare `GET /livez` and `GET /readyz` behavior to identify dependency impact.
-3. Inspect backend logs for request ID correlated failures.
-4. Inspect worker logs for task exceptions and retry patterns.
-5. Check Redis queue depth and broker availability.
-6. Inspect PostgreSQL connectivity, lock contention, and resource pressure.
-7. Apply mitigations:
-   - scale workers if backlog is rising
-   - reduce training concurrency if memory pressure is high
-   - roll back faulty release if regression is confirmed
+### Tier 1: Service Interruption (API Down)
+1.  **Verify Probes:** Check if `readyz` is failing globally or on specific pods.
+2.  **Upstream Check:** Validate PostgreSQL and Redis connectivity logs.
+3.  **Immediate Action:** If a recent deploy is suspected, **Roll back immediately** (`kubectl rollout undo`).
 
-## Capacity Planning Guidelines
+### Tier 2: Degraded Performance (High Latency/Queue Lag)
+1.  **Resource Saturation:** Check HPA status and pod CPU/Memory usage.
+2.  **Worker Contention:** If queue length is rising, scale the worker pool:
+    ```bash
+    kubectl scale deployment worker --replicas=10
+    ```
+3.  **Database Locks:** Inspect PostgreSQL for long-running transactions or lock contention.
 
-- Start with 2 API and 2 worker replicas.
-- Tune worker concurrency only after measuring memory per training job.
-- Keep artifact storage persistent and sized for model lifecycle retention.
-- Isolate long-running training from inference nodes under heavier workloads.
+---
 
-## Security and Compliance Baseline
+## 💾 Data Management & Disaster Recovery
 
-- Never commit plaintext credentials.
-- Use Kubernetes secrets or managed external secret providers.
-- Restrict network access to data stores.
-- Run vulnerability scanning in CI/CD.
-- Keep containers non-root with minimal privileges.
+### Backups
+*   **PostgreSQL:** Automated daily snapshots with WAL archiving (PITR).
+*   **Artifacts:** S3/Object Store versioning (or PVC snapshots) for model binaries.
 
-## Common Failure Modes
+### Recovery from DB Corruption
+The platform maintains a **Shadow Registry**. If PostgreSQL is lost:
+1.  Restore DB from most recent snapshot.
+2.  Run the `sync-registry` utility (planned) to re-import model metadata from the `.json` files in the artifact store.
 
-- Queue backlog growth
-  - Symptoms: rising job wait time and stale queued state
-  - Actions: scale workers, inspect Redis health, verify worker startup/config
-- Migration mismatch
-  - Symptoms: startup failures or ORM errors after deploy
-  - Actions: verify migration order, apply missing revision, roll back app if needed
-- Resource exhaustion during training
-  - Symptoms: OOM kills, worker restart loops, increased task failures
-  - Actions: lower concurrency, adjust memory limits, split workloads by model profile
+---
+
+## ⚖️ Capacity Planning
+
+*   **API Pods:** Baseline 2 replicas. Scale when average CPU > 60%.
+*   **Worker Pods:** Baseline 2 replicas. Scale based on `celery_queue_length`.
+*   **Storage:** Monitor PVC usage. Alert at 80% capacity. Auto-growth enabled on compatible CSI drivers.
+
+---
+
+## 🛡️ Security Operations
+
+*   **Identity:** Access to production APIs requires valid JWT/Service tokens (see [ROLE_MATRIX.md](./ROLE_MATRIX.md)).
+*   **Secrets:** Credentials must be rotated every 90 days.
+*   **Audit:** All `POST/PUT/DELETE` operations are logged with `request_id` and `user_actor` context.

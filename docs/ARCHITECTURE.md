@@ -1,104 +1,77 @@
-# AI Platform Architecture
+# System Architecture: No-Code ML Platform
 
-## Purpose
+## 🎯 Design Philosophy
 
-This architecture is designed to demonstrate strong engineering fundamentals for ML platform development:
+The No-Code ML Platform is designed to solve the inherent conflict between **synchronous user interaction** (API requests) and **asynchronous, resource-intensive workloads** (ML training).
 
-- clean service boundaries
-- operational reliability
-- asynchronous workload isolation
-- deterministic developer experience
+The architecture prioritizes:
+*   **Decoupling:** Isolation of failures and resource contention between planes.
+*   **Durability:** Multi-layered persistence of both metadata and model artifacts.
+*   **Operational Visibility:** Native instrumentation for health, readiness, and performance metrics.
+*   **Deterministic Infrastructure:** Reproducible build and deployment pipelines.
 
-## Primary Quality Attributes
+---
 
-- Reliability: dependency-aware readiness checks and migration-first rollouts.
-- Scalability: independent scaling of API and worker planes.
-- Operability: health and metrics endpoints plus runbooks.
-- Security baseline: non-root containers and constrained runtime posture.
-- Maintainability: typed contracts and service-centric backend organization.
+## 🏛️ Component Decomposition
 
-## System Planes
+### 1. API Plane (FastAPI)
+*   **Role:** Acts as the entry point for all control operations (Job submission, Model metadata retrieval) and low-latency inference.
+*   **Concurrency Model:** Asynchronous (ASGI) to handle high-volume I/O-bound requests while training is offloaded.
+*   **Validation:** Uses Pydantic V2 for strict contract enforcement and automatic OpenAPI (Swagger) generation.
 
-- API Plane (FastAPI)
-  - Accepts train and predict requests.
-  - Persists and serves job/model metadata.
-  - Enqueues training tasks to Celery.
-- Training Plane (Celery Worker)
-  - Pulls queued tasks from Redis.
-  - Executes AutoGluon Tabular training.
-  - Writes model artifacts and metadata updates.
-- Data Plane
-  - PostgreSQL for durable job/model records.
-  - Redis for broker and result backend.
-  - Persistent artifact volume for model binaries.
-- Experience Plane
-  - Next.js frontend that surfaces platform status and API entrypoints.
+### 2. Training Plane (Celery + AutoGluon)
+*   **Role:** Executes long-running, CPU/GPU-intensive training jobs.
+*   **Distributed Task Queue:** Leverages Redis as a broker to manage task distribution across a pool of workers.
+*   **Isolation:** Workers are stateless relative to the API; they communicate only through the Data Plane (PostgreSQL/Redis).
 
-## Request and Training Flow
+### 3. Data Plane (PostgreSQL + Redis)
+*   **PostgreSQL:** The source of truth for all job states (`job_records`) and model provenance (`model_records`).
+*   **Redis:** Serves as the transient messaging layer (Celery broker) and the result backend for task tracking.
 
-1. Client submits `POST /v1/models/train` with dataset path and target column.
-2. API creates `job_records` entry with queued status.
-3. API dispatches training task to Celery queue.
-4. Worker marks job running and starts AutoGluon training.
-5. Trained model is written to artifact storage.
-6. Worker stores model metadata in `model_records` and JSON registry.
-7. Worker marks job succeeded (or failed with error details).
-8. Client polls `GET /v1/jobs/{job_id}` and performs inference via `POST /v1/models/{model_id}/predict`.
+### 4. Artifact Plane (Hybrid Registry)
+*   **Filesystem Storage:** Persists binary model artifacts produced by AutoGluon.
+*   **JSON Shadow Registry:** Each model generates a JSON metadata sidecar. This enables the system to rebuild the database state from the artifact store in disaster recovery scenarios.
 
-## Deployment Topologies
+---
 
-- Local topology
-  - Docker Compose with gateway, frontend, backend, worker, Redis, PostgreSQL.
-- Cluster topology
-  - Kubernetes deployments for backend, worker, frontend.
-  - Migration job for controlled schema rollout.
-  - Ingress and service resources for traffic management.
+## 🚀 Scalability Vectors
 
-## Reliability Model
+| Component | Scaling Strategy | Bottleneck |
+| :--- | :--- | :--- |
+| **API** | Horizontal (HPA on CPU/Request count) | DB Connection Pool |
+| **Workers** | Horizontal (HPA on Queue Depth) | CPU/GPU availability |
+| **PostgreSQL** | Vertical or Read-Replicas | Write throughput (IOPS) |
+| **Redis** | Cluster/Sentinel | Memory (Task backlog size) |
 
-- `GET /livez`: process liveness only.
-- `GET /readyz`: validates database and Redis connectivity.
-- `GET /metrics`: Prometheus scrape endpoint.
-- HPAs for API, worker, and frontend.
-- PodDisruptionBudgets to reduce voluntary downtime.
-- Rollout safety via rolling updates and probes.
+---
 
-## Toolchain and Build Policy
+## 🛡️ Reliability & Fault Tolerance
 
-- Backend dependency and execution workflow is `uv` only.
-- Frontend workflow is `bun` only.
-- Container builds preserve the same policy to reduce local-vs-prod drift.
+### Retry Policy & Idempotency
+*   **Automatic Retries:** Celery tasks are configured with exponential backoff and jitter for transient failures (e.g., database connection blips).
+*   **Job State Machine:** Jobs progress through `QUEUED -> RUNNING -> SUCCEEDED\|FAILED`. This state is persisted in PostgreSQL, allowing the API to resume status reporting even after a worker restart.
 
-## Runtime and Storage Model
+### Failure Mode Analysis (FMA)
 
-- Metadata model
-  - `job_records`: asynchronous lifecycle state
-  - `model_records`: model identity and provenance
-- Artifacts
-  - Filesystem-backed model output under `artifacts/models`
-  - JSON registry snapshots under `artifacts/registry`
+| Failure | Impact | Mitigation |
+| :--- | :--- | :--- |
+| **Worker Crash** | Training job hangs/fails | Celery `acks_late` and visibility timeouts; Job timeout monitoring. |
+| **PostgreSQL Outage** | Meta-data operations fail | API enters `unready` state (Readiness Probe fails); JSON registry preserves artifact metadata. |
+| **Redis Outage** | Training queue stalls | API buffers requests if possible, or returns 503; Kubernetes restarts Redis. |
+| **Artifact Store Full** | Training/Inference fails | HPA scaling limits; monitoring on volume usage; retention policies. |
 
-## Security and Isolation Baseline
+---
 
-- Non-root runtime users in containers.
-- Reduced Linux capabilities.
-- Network policy baseline in Kubernetes manifests.
-- Secrets externalized from plain manifests via secret references.
+## 🔒 Security Posture
 
-## Extensibility Path
+*   **Runtime Isolation:** All containers run as non-privileged users.
+*   **Network Segmentation:** Kubernetes `NetworkPolicies` ensure that only the API can communicate with the outside world, and only the Worker/API can talk to the database.
+*   **Secret Management:** Externalized via Kubernetes Secrets; no credentials in the codebase or Docker images.
 
-- Add tenant-aware authn/authz and policy layers.
-- Move artifact registry to object storage.
-- Add distributed tracing and SLO alerting integrations.
-- Introduce dedicated node pools/queues for accelerator-specific workloads.
+---
 
-## Accelerator Strategy
+## 📈 Observability
 
-- CPU worker deployment is the baseline.
-- Optional GPU worker overlay exists in `infra/k8s/overlays/gpu-worker`.
-- Runtime introspection endpoint `GET /v1/system/capabilities` reports host capabilities.
-- TPU can be added as separate worker pools for TPU-compatible training stacks.
-
-## Reference Notes
-
-AutoGluon API reference snapshots are stored under `docs/reference/autogluon/` for offline browsing and implementation support.
+*   **Health Probes:** `/livez` (liveness), `/readyz` (database/broker connectivity check), `/startupz`.
+*   **Metrics:** Prometheus endpoint at `/metrics` tracking request latency, status codes, and job throughput.
+*   **Logging:** Structured JSON logging for easy ingestion into ELK/Splunk stacks.
